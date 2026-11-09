@@ -26,3 +26,4 @@ public class CategoryCorrectionRequest {
     public String getUserNote() { return userNote; }
     public void setUserNote(String userNote) { this.userNote = userNote; }
 }
+

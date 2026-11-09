@@ -116,3 +116,4 @@ public class DocumentClassificationService {
         return new DocumentClassificationResultDto(bestCategory, confidence, reasoning, detected);
     }
 }
+

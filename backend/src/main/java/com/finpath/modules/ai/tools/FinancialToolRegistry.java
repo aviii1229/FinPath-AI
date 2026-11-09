@@ -7,6 +7,10 @@ import com.finpath.modules.documents.dto.JourneyCompletenessDto;
 import com.finpath.modules.documents.dto.VaultSummaryStatsDto;
 import com.finpath.modules.documents.service.DocumentCompletenessService;
 import com.finpath.modules.documents.service.DocumentVaultService;
+import com.finpath.modules.journey.dto.JourneyStatsDto;
+import com.finpath.modules.journey.dto.StartJourneyRequest;
+import com.finpath.modules.journey.dto.UserJourneyDto;
+import com.finpath.modules.journey.service.JourneyService;
 import com.finpath.modules.fintech.dto.BudgetDto;
 import com.finpath.modules.fintech.dto.CashflowForecastDto;
 import com.finpath.modules.fintech.dto.FinancialInsightsResponse;
@@ -43,6 +47,7 @@ public class FinancialToolRegistry {
     private final FintechService fintechService;
     private final DocumentCompletenessService documentCompletenessService;
     private final DocumentVaultService documentVaultService;
+    private final JourneyService journeyService;
 
     public FinancialToolRegistry(UserRepository userRepository,
                                  InsuranceService insuranceService,
@@ -50,7 +55,8 @@ public class FinancialToolRegistry {
                                  LendingService lendingService,
                                  FintechService fintechService,
                                  DocumentCompletenessService documentCompletenessService,
-                                 DocumentVaultService documentVaultService) {
+                                 DocumentVaultService documentVaultService,
+                                 JourneyService journeyService) {
         this.userRepository = userRepository;
         this.insuranceService = insuranceService;
         this.policyRagService = policyRagService;
@@ -58,6 +64,7 @@ public class FinancialToolRegistry {
         this.fintechService = fintechService;
         this.documentCompletenessService = documentCompletenessService;
         this.documentVaultService = documentVaultService;
+        this.journeyService = journeyService;
     }
 
     public static class ToolExecutionResult<T> {
@@ -431,6 +438,50 @@ public class FinancialToolRegistry {
         } catch (Exception ex) {
             log.error("Tool execution failed: queryDocument", ex);
             return new ToolExecutionResult<>("queryDocument", false, null, "Document query failed: " + ex.getMessage(), System.currentTimeMillis() - start);
+        }
+    }
+
+    public ToolExecutionResult<List<UserJourneyDto>> getActiveJourneys(UUID userId) {
+        long start = System.currentTimeMillis();
+        validateUser(userId);
+        try {
+            List<UserJourneyDto> list = journeyService.getUserJourneys(userId, "IN_PROGRESS", null);
+            long duration = System.currentTimeMillis() - start;
+            String summary = String.format("Retrieved %d active financial journey workflows in progress.", list.size());
+            return new ToolExecutionResult<>("getActiveJourneys", true, list, summary, duration);
+        } catch (Exception ex) {
+            log.error("Tool execution failed: getActiveJourneys", ex);
+            return new ToolExecutionResult<>("getActiveJourneys", false, Collections.emptyList(), "Active journeys retrieval failed: " + ex.getMessage(), System.currentTimeMillis() - start);
+        }
+    }
+
+    public ToolExecutionResult<UserJourneyDto> startFinancialJourney(UUID userId, String journeyType) {
+        long start = System.currentTimeMillis();
+        validateUser(userId);
+        try {
+            UserJourneyDto dto = journeyService.startJourney(userId, new StartJourneyRequest(journeyType));
+            long duration = System.currentTimeMillis() - start;
+            String summary = String.format("Initialized %s journey (Status: %s, Current Step: %s).",
+                    dto.getTitle(), dto.getStatus(), dto.getCurrentStepKey());
+            return new ToolExecutionResult<>("startFinancialJourney", true, dto, summary, duration);
+        } catch (Exception ex) {
+            log.error("Tool execution failed: startFinancialJourney", ex);
+            return new ToolExecutionResult<>("startFinancialJourney", false, null, "Journey start failed: " + ex.getMessage(), System.currentTimeMillis() - start);
+        }
+    }
+
+    public ToolExecutionResult<JourneyStatsDto> getJourneyDashboardStats(UUID userId) {
+        long start = System.currentTimeMillis();
+        validateUser(userId);
+        try {
+            JourneyStatsDto stats = journeyService.getJourneyStats(userId);
+            long duration = System.currentTimeMillis() - start;
+            String summary = String.format("Journey overview: %d active, %d completed, %d paused, average completion %d%%.",
+                    stats.getActiveJourneys(), stats.getCompletedJourneys(), stats.getPausedJourneys(), stats.getAverageProgressPercentage());
+            return new ToolExecutionResult<>("getJourneyDashboardStats", true, stats, summary, duration);
+        } catch (Exception ex) {
+            log.error("Tool execution failed: getJourneyDashboardStats", ex);
+            return new ToolExecutionResult<>("getJourneyDashboardStats", false, null, "Journey stats retrieval failed: " + ex.getMessage(), System.currentTimeMillis() - start);
         }
     }
 

@@ -39,3 +39,4 @@ public class VaultSummaryStatsDto {
     public int getAverageCompletenessScore() { return averageCompletenessScore; }
     public void setAverageCompletenessScore(int averageCompletenessScore) { this.averageCompletenessScore = averageCompletenessScore; }
 }
+

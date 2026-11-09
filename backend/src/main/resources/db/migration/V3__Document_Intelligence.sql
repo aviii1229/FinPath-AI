@@ -14,3 +14,4 @@ ALTER TABLE document_uploads
 -- 2. Add index on user_id and document_category for fast search and filtering
 CREATE INDEX IF NOT EXISTS idx_document_uploads_user_cat ON document_uploads(user_id, document_category);
 CREATE INDEX IF NOT EXISTS idx_document_uploads_status ON document_uploads(processing_status);
+

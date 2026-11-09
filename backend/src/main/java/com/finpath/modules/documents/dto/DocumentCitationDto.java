@@ -28,3 +28,4 @@ public class DocumentCitationDto {
     public double getRelevanceScore() { return relevanceScore; }
     public void setRelevanceScore(double relevanceScore) { this.relevanceScore = relevanceScore; }
 }
+

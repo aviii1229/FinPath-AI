@@ -8,6 +8,7 @@ import com.finpath.modules.ai.repository.AiChatMessageRepository;
 import com.finpath.modules.ai.repository.AiChatSessionRepository;
 import com.finpath.modules.ai.tools.FinancialToolRegistry;
 import com.finpath.modules.documents.dto.*;
+import com.finpath.modules.journey.dto.*;
 import com.finpath.modules.fintech.dto.*;
 import com.finpath.modules.fintech.service.FintechService;
 import com.finpath.modules.insurance.dto.*;
@@ -118,6 +119,10 @@ public class AiJourneyOrchestratorService {
         else if (isDocumentIntelligenceIntent(lower)) {
             response = handleDocumentIntelligence(user, userProfile, session, messageText);
         }
+        // Phase 06: Journey Management & Progress Tracking
+        else if (isJourneyManagementIntent(lower)) {
+            response = handleJourneyManagement(user, userProfile, session, messageText);
+        }
         // 3. Multi-Module Request: Insurance + Budgeting ("buy health insurance but also manage expenses")
         else if (isMultiModuleInsuranceAndBudgetIntent(lower)) {
             response = handleMultiModule_InsuranceAndBudgeting(user, userProfile, session, messageText);
@@ -213,6 +218,14 @@ public class AiJourneyOrchestratorService {
         return lower.contains("document") || lower.contains("checklist") || lower.contains("vault")
                 || lower.contains("documents") || lower.contains("kyc documents") || lower.contains("completeness")
                 || (lower.contains("required") && (lower.contains("loan") || lower.contains("insurance")) && lower.contains("paper"));
+    }
+
+    private boolean isJourneyManagementIntent(String text) {
+        String lower = text.toLowerCase();
+        return lower.contains("my journey") || lower.contains("journey status") || lower.contains("active journey")
+                || lower.contains("active journeys") || lower.contains("pending step") || lower.contains("next step in my")
+                || lower.contains("track journey") || lower.contains("track my application") || lower.contains("journey progress")
+                || lower.contains("resume journey") || lower.contains("pause journey") || lower.contains("my journeys");
     }
 
     private boolean isFinancialEducationIntent(String text) {
@@ -1545,6 +1558,71 @@ public class AiJourneyOrchestratorService {
                 "Document Verification",
                 comp.getRequirements().stream().filter(DocumentRequirementItemDto::isFulfilled).map(DocumentRequirementItemDto::getTitle).toList(),
                 comp.getMissingDocuments()
+        );
+        resp.setJourneyStage(stage);
+
+        return resp;
+    }
+
+    private ChatQueryResponse handleJourneyManagement(UserEntity user, UserProfileEntity profile, AiChatSessionEntity session, String message) {
+        ChatQueryResponse resp = new ChatQueryResponse();
+        resp.setIntent("JOURNEY_MANAGEMENT");
+
+        FinancialToolRegistry.ToolExecutionResult<List<UserJourneyDto>> activeJourneysRes =
+                toolRegistry.getActiveJourneys(user.getId());
+        FinancialToolRegistry.ToolExecutionResult<JourneyStatsDto> statsRes =
+                toolRegistry.getJourneyDashboardStats(user.getId());
+
+        List<ChatMessageDto.ToolInvocationDto> tools = new ArrayList<>();
+        tools.add(activeJourneysRes.toDto());
+        tools.add(statsRes.toDto());
+        resp.setToolInvocations(tools);
+
+        List<UserJourneyDto> activeJourneys = activeJourneysRes.getData();
+        JourneyStatsDto stats = statsRes.getData();
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("### Financial Journey Orchestration & Workflow Tracker\n\n");
+
+        if (stats != null) {
+            sb.append(String.format("**Active Workflows:** %d | **Completed:** %d | **Paused:** %d | **Average Progress:** **%d%%**\n\n",
+                    stats.getActiveJourneys(), stats.getCompletedJourneys(), stats.getPausedJourneys(), stats.getAverageProgressPercentage()));
+        }
+
+        if (activeJourneys != null && !activeJourneys.isEmpty()) {
+            sb.append("#### Your Active Workflows:\n");
+            for (UserJourneyDto j : activeJourneys) {
+                sb.append(String.format("- **%s** (%s)\n", j.getTitle(), j.getJourneyDomain()));
+                sb.append(String.format("  - **Status:** %s | **Progress:** %d%% (Step %d of %d)\n",
+                        j.getStatus(), j.getProgressPercentage(), j.getCurrentStepIndex() + 1, j.getTotalSteps()));
+                sb.append(String.format("  - **Next Recommended Action:** %s\n", j.getNextRecommendedAction()));
+
+                if (j.getPendingRequiredDocuments() != null && !j.getPendingRequiredDocuments().isEmpty()) {
+                    sb.append(String.format("  - **Pending Document Checklist:** %s\n", String.join(", ", j.getPendingRequiredDocuments())));
+                }
+            }
+            sb.append("\n");
+        } else {
+            sb.append("You have no active journeys in progress right now. You can launch one of our guided workflows:\n");
+            sb.append("- **Insurance Discovery & Application:** Health & family floater requirements, side-by-side comparison in INR (₹), and KYC preparation.\n");
+            sb.append("- **Retail Lending & Sanction:** Affordability assessment, EMI calculation, multi-lender comparison, and paperless sanction tracking.\n");
+            sb.append("- **Wealth Discipline & Financial Health:** Expense audit, 50-30-20 budget creation, emergency goal setting, and monthly review.\n\n");
+        }
+
+        sb.append("> **Human Approval Notice:** FinPath enforces strict simulation mode for all financial submissions. No external financial commitments or disbursements are ever executed without explicit, confirmed user authorization.\n");
+        resp.setContent(sb.toString());
+
+        List<AiInteractiveActionDto> actions = new ArrayList<>();
+        actions.add(new AiInteractiveActionDto("View Journey Dashboard", "NAVIGATE", "tab=active", "/journeys"));
+        resp.setSuggestedActions(actions);
+
+        AiJourneyStageDto stage = new AiJourneyStageDto(
+                "JOURNEY_TRACKER_REVIEWED",
+                stats != null ? (int) stats.getCompletedJourneys() : 0,
+                stats != null ? (int) stats.getTotalJourneys() : 0,
+                "Journey Tracking",
+                activeJourneys != null ? activeJourneys.stream().map(UserJourneyDto::getTitle).toList() : List.of(),
+                List.of()
         );
         resp.setJourneyStage(stage);
 

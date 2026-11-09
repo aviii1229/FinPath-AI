@@ -11,3 +11,4 @@ public class BusinessException extends ApiException {
         super(message, status);
     }
 }
+

@@ -39,3 +39,4 @@ public class DocumentClassificationResultDto {
     public List<String> getDetectedKeywords() { return detectedKeywords; }
     public void setDetectedKeywords(List<String> detectedKeywords) { this.detectedKeywords = detectedKeywords; }
 }
+

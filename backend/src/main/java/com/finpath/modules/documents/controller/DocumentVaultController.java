@@ -122,3 +122,4 @@ public class DocumentVaultController {
         return ResponseEntity.ok(ApiResponse.success(stats));
     }
 }
+

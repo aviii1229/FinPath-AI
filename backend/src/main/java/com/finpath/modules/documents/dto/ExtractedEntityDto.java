@@ -43,3 +43,4 @@ public class ExtractedEntityDto {
     public String getSourceSnippet() { return sourceSnippet; }
     public void setSourceSnippet(String sourceSnippet) { this.sourceSnippet = sourceSnippet; }
 }
+

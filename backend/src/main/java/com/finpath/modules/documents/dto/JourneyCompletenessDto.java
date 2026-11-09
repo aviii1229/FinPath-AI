@@ -60,3 +60,4 @@ public class JourneyCompletenessDto {
     public String getRegulatoryDisclaimer() { return regulatoryDisclaimer; }
     public void setRegulatoryDisclaimer(String regulatoryDisclaimer) { this.regulatoryDisclaimer = regulatoryDisclaimer; }
 }
+
