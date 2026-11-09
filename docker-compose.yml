@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: finpath-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-finpath_db}
+      POSTGRES_USER: ${POSTGRES_USER:-finpath_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-finpath_secret}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init-pgvector.sh:/docker-entrypoint-initdb.d/init-pgvector.sh
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-finpath_user} -d ${POSTGRES_DB:-finpath_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - finpath-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: finpath-backend
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-finpath_db}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-finpath_user}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-finpath_secret}
+      JWT_SECRET: ${JWT_SECRET:-404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    ports:
+      - "8080:8080"
+    volumes:
+      - document_storage:/app/storage/documents
+    networks:
+      - finpath-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: finpath-frontend
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    networks:
+      - finpath-network
+
+volumes:
+  postgres_data:
+    name: finpath_postgres_data
+  document_storage:
+    name: finpath_document_storage
+
+networks:
+  finpath-network:
+    name: finpath-network
+    driver: bridge
