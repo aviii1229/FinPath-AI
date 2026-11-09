@@ -76,6 +76,22 @@ class ApiClient {
     return this.handleResponse<T>(response);
   }
 
+  async postMultipart<T>(endpoint: string, formData: FormData): Promise<ApiResponse<T>> {
+    const headers: Record<string, string> = {
+      'Accept': 'application/json',
+    };
+    const token = localStorage.getItem('finpath_token');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+    return this.handleResponse<T>(response);
+  }
+
   async delete<T>(endpoint: string): Promise<ApiResponse<T>> {
     const response = await fetch(`${this.baseUrl}${endpoint}`, {
       method: 'DELETE',

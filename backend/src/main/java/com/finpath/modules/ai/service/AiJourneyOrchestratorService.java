@@ -7,6 +7,7 @@ import com.finpath.modules.ai.entity.AiChatSessionEntity;
 import com.finpath.modules.ai.repository.AiChatMessageRepository;
 import com.finpath.modules.ai.repository.AiChatSessionRepository;
 import com.finpath.modules.ai.tools.FinancialToolRegistry;
+import com.finpath.modules.documents.dto.*;
 import com.finpath.modules.fintech.dto.*;
 import com.finpath.modules.fintech.service.FintechService;
 import com.finpath.modules.insurance.dto.*;
@@ -113,6 +114,10 @@ public class AiJourneyOrchestratorService {
         else if (isSmartExpenseAuditIntent(lower)) {
             response = handleSmartExpenseAudit(user, userProfile, session, messageText);
         }
+        // Phase 05: Document Intelligence & Completeness Check
+        else if (isDocumentIntelligenceIntent(lower)) {
+            response = handleDocumentIntelligence(user, userProfile, session, messageText);
+        }
         // 3. Multi-Module Request: Insurance + Budgeting ("buy health insurance but also manage expenses")
         else if (isMultiModuleInsuranceAndBudgetIntent(lower)) {
             response = handleMultiModule_InsuranceAndBudgeting(user, userProfile, session, messageText);
@@ -201,6 +206,13 @@ public class AiJourneyOrchestratorService {
         String lower = text.toLowerCase();
         return lower.contains("duplicate") || lower.contains("subscriptions") || lower.contains("subscription")
                 || lower.contains("unusual expenses") || lower.contains("spending increase");
+    }
+
+    private boolean isDocumentIntelligenceIntent(String text) {
+        String lower = text.toLowerCase();
+        return lower.contains("document") || lower.contains("checklist") || lower.contains("vault")
+                || lower.contains("documents") || lower.contains("kyc documents") || lower.contains("completeness")
+                || (lower.contains("required") && (lower.contains("loan") || lower.contains("insurance")) && lower.contains("paper"));
     }
 
     private boolean isFinancialEducationIntent(String text) {
@@ -1459,6 +1471,81 @@ public class AiJourneyOrchestratorService {
         resp.setSuggestedActions(actions);
 
         AiJourneyStageDto stage = new AiJourneyStageDto("SMART_EXPENSES_AUDITED", 1, 1, "Smart Expense Audit", List.of("Audit Completed"), List.of());
+        resp.setJourneyStage(stage);
+
+        return resp;
+    }
+
+    private ChatQueryResponse handleDocumentIntelligence(UserEntity user, UserProfileEntity profile, AiChatSessionEntity session, String message) {
+        ChatQueryResponse resp = new ChatQueryResponse();
+        resp.setIntent("DOCUMENT_INTELLIGENCE");
+
+        String lower = message.toLowerCase();
+        String journeyType = "PERSONAL_LOAN";
+        if (lower.contains("home loan") || lower.contains("housing") || lower.contains("mortgage") || lower.contains("property")) {
+            journeyType = "HOME_LOAN";
+        } else if (lower.contains("claim") || lower.contains("hospital") || lower.contains("reimbursement")) {
+            journeyType = "INSURANCE_CLAIM";
+        } else if (lower.contains("term") || lower.contains("life")) {
+            journeyType = "TERM_LIFE";
+        } else if (lower.contains("health") || lower.contains("insurance") || lower.contains("mediclaim")) {
+            journeyType = "HEALTH_INSURANCE";
+        }
+
+        FinancialToolRegistry.ToolExecutionResult<JourneyCompletenessDto> completenessRes =
+                toolRegistry.getDocumentCompleteness(user.getId(), journeyType);
+        FinancialToolRegistry.ToolExecutionResult<VaultSummaryStatsDto> statsRes =
+                toolRegistry.getVaultStats(user.getId());
+
+        List<ChatMessageDto.ToolInvocationDto> tools = new ArrayList<>();
+        tools.add(completenessRes.toDto());
+        tools.add(statsRes.toDto());
+        resp.setToolInvocations(tools);
+
+        JourneyCompletenessDto comp = completenessRes.getData();
+        VaultSummaryStatsDto stats = statsRes.getData();
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("### Financial Document Intelligence & Readiness Audit\n\n");
+        sb.append(String.format("**%s**\n", comp.getJourneyTitle()));
+        sb.append(String.format("- **Readiness Score:** **%d%%** (%d of %d required documents verified)\n",
+                comp.getCompletionPercentage(), comp.getTotalFulfilled(), comp.getTotalRequired()));
+        sb.append(String.format("- **Vault Overview:** %d total documents stored (%s space used)\n\n",
+                stats != null ? stats.getTotalDocuments() : 0, stats != null ? stats.getFormattedTotalSize() : "0 B"));
+
+        if (!comp.getMissingDocuments().isEmpty()) {
+            sb.append("#### Missing Required Documents:\n");
+            for (String missing : comp.getMissingDocuments()) {
+                sb.append(String.format("- ❌ **%s**\n", missing));
+            }
+            sb.append("\n");
+        } else {
+            sb.append("✅ **All mandatory documents are present in your vault!**\n\n");
+        }
+
+        if (!comp.getWarnings().isEmpty()) {
+            sb.append("#### Alerts & Expiry Warnings:\n");
+            for (String warn : comp.getWarnings()) {
+                sb.append(String.format("- ⚠️ %s\n", warn));
+            }
+            sb.append("\n");
+        }
+
+        sb.append(String.format("> **Regulatory Notice:** %s\n", comp.getRegulatoryDisclaimer()));
+        resp.setContent(sb.toString());
+
+        List<AiInteractiveActionDto> actions = new ArrayList<>();
+        actions.add(new AiInteractiveActionDto("Open Document Vault", "NAVIGATE", "journey=" + journeyType, "/documents"));
+        resp.setSuggestedActions(actions);
+
+        AiJourneyStageDto stage = new AiJourneyStageDto(
+                "DOCUMENT_READINESS_CHECKED",
+                comp.getTotalFulfilled(),
+                comp.getTotalRequired(),
+                "Document Verification",
+                comp.getRequirements().stream().filter(DocumentRequirementItemDto::isFulfilled).map(DocumentRequirementItemDto::getTitle).toList(),
+                comp.getMissingDocuments()
+        );
         resp.setJourneyStage(stage);
 
         return resp;

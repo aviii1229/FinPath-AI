@@ -2,6 +2,11 @@ package com.finpath.modules.ai.tools;
 
 import com.finpath.core.exception.ResourceNotFoundException;
 import com.finpath.modules.ai.dto.ChatMessageDto;
+import com.finpath.modules.documents.dto.DocumentQueryResponse;
+import com.finpath.modules.documents.dto.JourneyCompletenessDto;
+import com.finpath.modules.documents.dto.VaultSummaryStatsDto;
+import com.finpath.modules.documents.service.DocumentCompletenessService;
+import com.finpath.modules.documents.service.DocumentVaultService;
 import com.finpath.modules.fintech.dto.BudgetDto;
 import com.finpath.modules.fintech.dto.CashflowForecastDto;
 import com.finpath.modules.fintech.dto.FinancialInsightsResponse;
@@ -36,17 +41,23 @@ public class FinancialToolRegistry {
     private final PolicyRagService policyRagService;
     private final LendingService lendingService;
     private final FintechService fintechService;
+    private final DocumentCompletenessService documentCompletenessService;
+    private final DocumentVaultService documentVaultService;
 
     public FinancialToolRegistry(UserRepository userRepository,
                                  InsuranceService insuranceService,
                                  PolicyRagService policyRagService,
                                  LendingService lendingService,
-                                 FintechService fintechService) {
+                                 FintechService fintechService,
+                                 DocumentCompletenessService documentCompletenessService,
+                                 DocumentVaultService documentVaultService) {
         this.userRepository = userRepository;
         this.insuranceService = insuranceService;
         this.policyRagService = policyRagService;
         this.lendingService = lendingService;
         this.fintechService = fintechService;
+        this.documentCompletenessService = documentCompletenessService;
+        this.documentVaultService = documentVaultService;
     }
 
     public static class ToolExecutionResult<T> {
@@ -375,6 +386,51 @@ public class FinancialToolRegistry {
         } catch (Exception ex) {
             log.error("Tool execution failed: simulateWhatIf", ex);
             return new ToolExecutionResult<>("simulateWhatIf", false, null, "What-If simulation failed: " + ex.getMessage(), System.currentTimeMillis() - start);
+        }
+    }
+
+    public ToolExecutionResult<JourneyCompletenessDto> getDocumentCompleteness(UUID userId, String journeyType) {
+        long start = System.currentTimeMillis();
+        validateUser(userId);
+        try {
+            JourneyCompletenessDto completeness = documentCompletenessService.evaluateCompleteness(userId, journeyType);
+            long duration = System.currentTimeMillis() - start;
+            String summary = String.format("Evaluated %s document completeness: %d%% completed (%d of %d required documents present).",
+                    completeness.getJourneyTitle(), completeness.getCompletionPercentage(),
+                    completeness.getTotalFulfilled(), completeness.getTotalRequired());
+            return new ToolExecutionResult<>("getDocumentCompleteness", true, completeness, summary, duration);
+        } catch (Exception ex) {
+            log.error("Tool execution failed: getDocumentCompleteness", ex);
+            return new ToolExecutionResult<>("getDocumentCompleteness", false, null, "Document completeness check failed: " + ex.getMessage(), System.currentTimeMillis() - start);
+        }
+    }
+
+    public ToolExecutionResult<VaultSummaryStatsDto> getVaultStats(UUID userId) {
+        long start = System.currentTimeMillis();
+        validateUser(userId);
+        try {
+            VaultSummaryStatsDto stats = documentVaultService.getVaultStats(userId);
+            long duration = System.currentTimeMillis() - start;
+            String summary = String.format("Retrieved vault statistics: %d documents stored, %s storage utilized, average readiness %d%%.",
+                    stats.getTotalDocuments(), stats.getFormattedTotalSize(), stats.getAverageCompletenessScore());
+            return new ToolExecutionResult<>("getVaultStats", true, stats, summary, duration);
+        } catch (Exception ex) {
+            log.error("Tool execution failed: getVaultStats", ex);
+            return new ToolExecutionResult<>("getVaultStats", false, null, "Vault stats retrieval failed: " + ex.getMessage(), System.currentTimeMillis() - start);
+        }
+    }
+
+    public ToolExecutionResult<DocumentQueryResponse> queryDocument(UUID userId, UUID docId, String question) {
+        long start = System.currentTimeMillis();
+        validateUser(userId);
+        try {
+            DocumentQueryResponse response = documentVaultService.queryDocument(userId, docId, question);
+            long duration = System.currentTimeMillis() - start;
+            String summary = String.format("Grounded document query returned with %d cited clauses.", response.getCitations().size());
+            return new ToolExecutionResult<>("queryDocument", true, response, summary, duration);
+        } catch (Exception ex) {
+            log.error("Tool execution failed: queryDocument", ex);
+            return new ToolExecutionResult<>("queryDocument", false, null, "Document query failed: " + ex.getMessage(), System.currentTimeMillis() - start);
         }
     }
 

@@ -14,6 +14,7 @@ import { AiAssistantPage } from '@/features/ai-assistant/AiAssistantPage';
 import { TransactionsPage } from '@/features/transactions/TransactionsPage';
 import { SettingsPage } from '@/features/settings/SettingsPage';
 import { OnboardingWizardPage } from '@/features/onboarding/OnboardingWizardPage';
+import { DocumentVaultPage } from '@/features/documents/DocumentVaultPage';
 import { LoadingSpinner } from '@/shared/components/ui/LoadingSpinner';
 
 // Route Guard component
@@ -69,6 +70,7 @@ export const App: React.FC = () => {
             <Route path="/lending" element={<LendingPage />} />
             <Route path="/fintech" element={<FintechPage />} />
             <Route path="/ai-assistant" element={<AiAssistantPage />} />
+            <Route path="/documents" element={<DocumentVaultPage />} />
             <Route path="/transactions" element={<TransactionsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
