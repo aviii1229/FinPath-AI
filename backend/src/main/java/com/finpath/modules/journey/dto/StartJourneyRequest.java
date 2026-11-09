@@ -27,3 +27,4 @@ public class StartJourneyRequest {
     public Map<String, Object> getInitialData() { return initialData; }
     public void setInitialData(Map<String, Object> initialData) { this.initialData = initialData; }
 }
+

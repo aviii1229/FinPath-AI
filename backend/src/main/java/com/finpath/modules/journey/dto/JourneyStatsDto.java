@@ -36,3 +36,4 @@ public class JourneyStatsDto {
     public Map<String, Long> getDomainDistribution() { return domainDistribution; }
     public void setDomainDistribution(Map<String, Long> domainDistribution) { this.domainDistribution = domainDistribution; }
 }
+

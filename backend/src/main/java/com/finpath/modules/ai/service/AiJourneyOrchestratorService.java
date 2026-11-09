@@ -9,6 +9,7 @@ import com.finpath.modules.ai.repository.AiChatSessionRepository;
 import com.finpath.modules.ai.tools.FinancialToolRegistry;
 import com.finpath.modules.documents.dto.*;
 import com.finpath.modules.journey.dto.*;
+import com.finpath.modules.notification.dto.*;
 import com.finpath.modules.fintech.dto.*;
 import com.finpath.modules.fintech.service.FintechService;
 import com.finpath.modules.insurance.dto.*;
@@ -122,6 +123,10 @@ public class AiJourneyOrchestratorService {
         // Phase 06: Journey Management & Progress Tracking
         else if (isJourneyManagementIntent(lower)) {
             response = handleJourneyManagement(user, userProfile, session, messageText);
+        }
+        // Phase 07: Proactive Financial Reminders & Notifications
+        else if (isNotificationReminderIntent(lower)) {
+            response = handleNotificationReminder(user, userProfile, session, messageText);
         }
         // 3. Multi-Module Request: Insurance + Budgeting ("buy health insurance but also manage expenses")
         else if (isMultiModuleInsuranceAndBudgetIntent(lower)) {
@@ -1622,6 +1627,75 @@ public class AiJourneyOrchestratorService {
                 stats != null ? (int) stats.getTotalJourneys() : 0,
                 "Journey Tracking",
                 activeJourneys != null ? activeJourneys.stream().map(UserJourneyDto::getTitle).toList() : List.of(),
+                List.of()
+        );
+        resp.setJourneyStage(stage);
+
+        return resp;
+    }
+
+    private boolean isNotificationReminderIntent(String lower) {
+        return lower.contains("notification") ||
+               lower.contains("reminder") ||
+               lower.contains("alert") ||
+               lower.contains("upcoming bill") ||
+               lower.contains("upcoming payment") ||
+               lower.contains("pending payment") ||
+               lower.contains("upcoming emi") ||
+               lower.contains("due date");
+    }
+
+    private ChatQueryResponse handleNotificationReminder(UserEntity user, UserProfileEntity profile, AiChatSessionEntity session, String message) {
+        ChatQueryResponse resp = new ChatQueryResponse();
+        resp.setIntent("PROACTIVE_NOTIFICATION_REMINDER");
+
+        FinancialToolRegistry.ToolExecutionResult<EvaluateNotificationsResponseDto> evalRes =
+                toolRegistry.evaluateProactiveReminders(user.getId());
+        FinancialToolRegistry.ToolExecutionResult<NotificationSummaryDto> summaryRes =
+                toolRegistry.getNotificationSummary(user.getId());
+
+        List<ChatMessageDto.ToolInvocationDto> tools = new ArrayList<>();
+        tools.add(evalRes.toDto());
+        tools.add(summaryRes.toDto());
+        resp.setToolInvocations(tools);
+
+        NotificationSummaryDto summary = summaryRes.getData();
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("### Proactive Financial Intelligence & Reminders Audit\n\n");
+        sb.append(String.format("Found **%d unread notifications** (%d critical, %d high priority) across your financial profile.\n\n",
+                summary != null ? summary.getUnreadCount() : 0,
+                summary != null ? summary.getCriticalCount() : 0,
+                summary != null ? summary.getHighCount() : 0));
+
+        if (summary != null && summary.getRecentNotifications() != null && !summary.getRecentNotifications().isEmpty()) {
+            sb.append("#### Active Reminders & Alerts:\n");
+            for (NotificationDto n : summary.getRecentNotifications()) {
+                String icon = switch (n.getPriority() != null ? n.getPriority() : "MEDIUM") {
+                    case "CRITICAL" -> "🚨";
+                    case "HIGH" -> "⚠️";
+                    default -> "ℹ️";
+                };
+                sb.append(String.format("- %s **%s** (%s): %s\n", icon, n.getTitle(), n.getCategory(), n.getDescription()));
+            }
+            sb.append("\n");
+        } else {
+            sb.append("✅ **All clear!** You currently have no pending high-priority payment or renewal alerts.\n\n");
+        }
+
+        sb.append("> **Privacy & Frequency Notice:** Notifications respect your configured quiet hours and category delivery preferences. External channel notifications never expose raw account numbers.\n");
+        resp.setContent(sb.toString());
+
+        List<AiInteractiveActionDto> actions = new ArrayList<>();
+        actions.add(new AiInteractiveActionDto("Open Notification Center", "NAVIGATE", "view=all", "/notifications"));
+        resp.setSuggestedActions(actions);
+
+        AiJourneyStageDto stage = new AiJourneyStageDto(
+                "NOTIFICATIONS_AUDITED",
+                summary != null ? (int) summary.getUnreadCount() : 0,
+                summary != null ? (int) summary.getTotalCount() : 0,
+                "Notification Management",
+                List.of("Proactive Scan Completed", "Quiet Hours Evaluated"),
                 List.of()
         );
         resp.setJourneyStage(stage);

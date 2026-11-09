@@ -213,3 +213,4 @@ public class JourneyTemplateRegistry {
                 .orElseThrow(() -> new BadRequestException("Unknown journey type: " + journeyType + ". Valid types: " + templates.keySet()));
     }
 }
+

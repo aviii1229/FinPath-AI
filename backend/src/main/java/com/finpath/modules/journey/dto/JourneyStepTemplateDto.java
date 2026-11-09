@@ -46,3 +46,4 @@ public class JourneyStepTemplateDto {
     public List<String> getFieldKeys() { return fieldKeys; }
     public void setFieldKeys(List<String> fieldKeys) { this.fieldKeys = fieldKeys; }
 }
+

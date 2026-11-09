@@ -34,3 +34,4 @@ public interface UserJourneyRepository extends JpaRepository<UserJourneyEntity, 
             @Param("status") String status,
             @Param("domain") String domain);
 }
+

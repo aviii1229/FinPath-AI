@@ -45,3 +45,4 @@ CREATE TABLE IF NOT EXISTS journey_step_records (
 );
 
 CREATE INDEX IF NOT EXISTS idx_step_records_journey ON journey_step_records(journey_id, step_order);
+

@@ -49,3 +49,4 @@ public class JourneyTemplateDto {
         this.totalSteps = steps != null ? steps.size() : 0;
     }
 }
+

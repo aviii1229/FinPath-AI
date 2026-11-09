@@ -22,3 +22,4 @@ public class CancelJourneyRequest {
     public Long getExpectedVersion() { return expectedVersion; }
     public void setExpectedVersion(Long expectedVersion) { this.expectedVersion = expectedVersion; }
 }
+

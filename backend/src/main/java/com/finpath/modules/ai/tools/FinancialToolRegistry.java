@@ -11,6 +11,12 @@ import com.finpath.modules.journey.dto.JourneyStatsDto;
 import com.finpath.modules.journey.dto.StartJourneyRequest;
 import com.finpath.modules.journey.dto.UserJourneyDto;
 import com.finpath.modules.journey.service.JourneyService;
+import com.finpath.modules.notification.dto.EvaluateNotificationsResponseDto;
+import com.finpath.modules.notification.dto.NotificationDto;
+import com.finpath.modules.notification.dto.NotificationPreferenceDto;
+import com.finpath.modules.notification.dto.NotificationSummaryDto;
+import com.finpath.modules.notification.service.NotificationService;
+import com.finpath.modules.notification.service.ProactiveNotificationService;
 import com.finpath.modules.fintech.dto.BudgetDto;
 import com.finpath.modules.fintech.dto.CashflowForecastDto;
 import com.finpath.modules.fintech.dto.FinancialInsightsResponse;
@@ -48,6 +54,8 @@ public class FinancialToolRegistry {
     private final DocumentCompletenessService documentCompletenessService;
     private final DocumentVaultService documentVaultService;
     private final JourneyService journeyService;
+    private final NotificationService notificationService;
+    private final ProactiveNotificationService proactiveNotificationService;
 
     public FinancialToolRegistry(UserRepository userRepository,
                                  InsuranceService insuranceService,
@@ -56,7 +64,9 @@ public class FinancialToolRegistry {
                                  FintechService fintechService,
                                  DocumentCompletenessService documentCompletenessService,
                                  DocumentVaultService documentVaultService,
-                                 JourneyService journeyService) {
+                                 JourneyService journeyService,
+                                 NotificationService notificationService,
+                                 ProactiveNotificationService proactiveNotificationService) {
         this.userRepository = userRepository;
         this.insuranceService = insuranceService;
         this.policyRagService = policyRagService;
@@ -65,6 +75,8 @@ public class FinancialToolRegistry {
         this.documentCompletenessService = documentCompletenessService;
         this.documentVaultService = documentVaultService;
         this.journeyService = journeyService;
+        this.notificationService = notificationService;
+        this.proactiveNotificationService = proactiveNotificationService;
     }
 
     public static class ToolExecutionResult<T> {
@@ -482,6 +494,54 @@ public class FinancialToolRegistry {
         } catch (Exception ex) {
             log.error("Tool execution failed: getJourneyDashboardStats", ex);
             return new ToolExecutionResult<>("getJourneyDashboardStats", false, null, "Journey stats retrieval failed: " + ex.getMessage(), System.currentTimeMillis() - start);
+        }
+    }
+
+    public ToolExecutionResult<NotificationSummaryDto> getNotificationSummary(UUID userId) {
+        long start = System.currentTimeMillis();
+        validateUser(userId);
+        try {
+            NotificationSummaryDto summary = notificationService.getSummary(userId);
+            long duration = System.currentTimeMillis() - start;
+            String text = String.format("Notification overview: %d unread alerts (%d critical, %d high priority) across %d total alerts.",
+                    summary.getUnreadCount(), summary.getCriticalCount(), summary.getHighCount(), summary.getTotalCount());
+            return new ToolExecutionResult<>("getNotificationSummary", true, summary, text, duration);
+        } catch (Exception ex) {
+            log.error("Tool execution failed: getNotificationSummary", ex);
+            return new ToolExecutionResult<>("getNotificationSummary", false, null, "Notification summary failed: " + ex.getMessage(), System.currentTimeMillis() - start);
+        }
+    }
+
+    public ToolExecutionResult<EvaluateNotificationsResponseDto> evaluateProactiveReminders(UUID userId) {
+        long start = System.currentTimeMillis();
+        validateUser(userId);
+        try {
+            EvaluateNotificationsResponseDto res = proactiveNotificationService.evaluateProactiveNotifications(userId);
+            long duration = System.currentTimeMillis() - start;
+            String text = String.format("Proactive scan evaluated %d rules: %d new notifications generated, %d duplicate alerts suppressed.",
+                    res.getEvaluatedRulesCount(), res.getGeneratedCount(), res.getSkippedDuplicatesCount());
+            return new ToolExecutionResult<>("evaluateProactiveReminders", true, res, text, duration);
+        } catch (Exception ex) {
+            log.error("Tool execution failed: evaluateProactiveReminders", ex);
+            return new ToolExecutionResult<>("evaluateProactiveReminders", false, null, "Proactive scan failed: " + ex.getMessage(), System.currentTimeMillis() - start);
+        }
+    }
+
+    public ToolExecutionResult<NotificationPreferenceDto> getNotificationPreferences(UUID userId) {
+        long start = System.currentTimeMillis();
+        validateUser(userId);
+        try {
+            NotificationPreferenceDto prefs = notificationService.getPreferences(userId);
+            long duration = System.currentTimeMillis() - start;
+            String text = String.format("Notification channels: In-App (%s), Email (%s), Push (%s). Quiet hours: %s.",
+                    prefs.isInAppEnabled() ? "Enabled" : "Disabled",
+                    prefs.isEmailEnabled() ? "Enabled" : "Disabled",
+                    prefs.isPushEnabled() ? "Enabled" : "Disabled",
+                    prefs.isQuietHoursEnabled() ? (prefs.getQuietHoursStart() + " - " + prefs.getQuietHoursEnd()) : "Off");
+            return new ToolExecutionResult<>("getNotificationPreferences", true, prefs, text, duration);
+        } catch (Exception ex) {
+            log.error("Tool execution failed: getNotificationPreferences", ex);
+            return new ToolExecutionResult<>("getNotificationPreferences", false, null, "Notification preferences retrieval failed: " + ex.getMessage(), System.currentTimeMillis() - start);
         }
     }
 

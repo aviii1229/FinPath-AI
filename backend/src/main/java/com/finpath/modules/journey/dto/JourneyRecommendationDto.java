@@ -43,3 +43,4 @@ public class JourneyRecommendationDto {
     public int getPriorityOrder() { return priorityOrder; }
     public void setPriorityOrder(int priorityOrder) { this.priorityOrder = priorityOrder; }
 }
+

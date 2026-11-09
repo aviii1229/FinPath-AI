@@ -15,3 +15,4 @@ public interface JourneyStepRecordRepository extends JpaRepository<JourneyStepRe
 
     Optional<JourneyStepRecordEntity> findByJourneyIdAndStepKey(UUID journeyId, String stepKey);
 }
+
