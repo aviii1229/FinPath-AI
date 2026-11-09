@@ -332,6 +332,16 @@ public class InsuranceService {
     }
 
     @Transactional(readOnly = true)
+    public ClaimTrackingDto getClaimTracking(UUID userId, UUID claimId) {
+        InsuranceClaimEntity claim = claimRepository.findById(claimId)
+                .orElseThrow(() -> new ResourceNotFoundException("Claim not found: " + claimId));
+        if (userId != null && !claim.getUser().getId().equals(userId)) {
+            throw new org.springframework.security.access.AccessDeniedException("Access denied: You cannot view insurance claims belonging to another user");
+        }
+        return getClaimTracking(claimId);
+    }
+
+    @Transactional(readOnly = true)
     public ClaimTrackingDto getClaimTracking(UUID claimId) {
         InsuranceClaimEntity claim = claimRepository.findById(claimId)
                 .orElseThrow(() -> new ResourceNotFoundException("Claim not found: " + claimId));

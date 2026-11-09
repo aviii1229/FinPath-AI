@@ -33,6 +33,9 @@ public class CustomUserDetailsService implements UserDetailsService {
     public UserDetails loadUserById(UUID id) {
         UserEntity user = userRepository.findById(id)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found with id: " + id));
+        if ("DELETED".equalsIgnoreCase(user.getStatus())) {
+            throw new UsernameNotFoundException("Account has been deleted: " + id);
+        }
 
         return UserPrincipal.create(user);
     }

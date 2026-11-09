@@ -70,8 +70,10 @@ public class InsuranceController {
 
     @GetMapping("/claims/{id}/tracking")
     @Operation(summary = "Track detailed claim progression with multi-stage verification stepper")
-    public ResponseEntity<ApiResponse<ClaimTrackingDto>> getClaimTracking(@PathVariable UUID id) {
-        ClaimTrackingDto tracking = insuranceService.getClaimTracking(id);
+    public ResponseEntity<ApiResponse<ClaimTrackingDto>> getClaimTracking(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserPrincipal user) {
+        ClaimTrackingDto tracking = insuranceService.getClaimTracking(user.getId(), id);
         return ResponseEntity.ok(ApiResponse.success(tracking));
     }
 

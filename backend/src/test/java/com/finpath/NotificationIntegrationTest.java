@@ -257,3 +257,4 @@ public class NotificationIntegrationTest {
                 .andExpect(status().isNotFound());
     }
 }
+

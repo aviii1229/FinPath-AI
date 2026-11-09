@@ -47,8 +47,9 @@ public class AiChatController {
     @GetMapping("/chat/sessions/{id}/messages")
     @Operation(summary = "Get full message turn history for a session")
     public ResponseEntity<ApiResponse<List<ChatMessageDto>>> getSessionMessages(
+            @AuthenticationPrincipal UserPrincipal user,
             @PathVariable UUID id) {
-        List<ChatMessageDto> messages = aiChatService.getSessionMessages(id);
+        List<ChatMessageDto> messages = aiChatService.getSessionMessages(user != null ? user.getId() : null, id);
         return ResponseEntity.ok(ApiResponse.success(messages));
     }
 

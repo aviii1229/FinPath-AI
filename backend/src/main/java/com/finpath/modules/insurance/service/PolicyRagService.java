@@ -17,6 +17,10 @@ public class PolicyRagService {
 
     private static final Logger log = LoggerFactory.getLogger(PolicyRagService.class);
 
+    public static final String UNTRUSTED_DOC_START = "<<<UNTRUSTED_FINANCIAL_DOCUMENT_START>>>";
+    public static final String UNTRUSTED_DOC_END = "<<<UNTRUSTED_FINANCIAL_DOCUMENT_END>>>";
+    private static final String RESPONSIBLE_AI_DISCLAIMER = "\n\n*Responsible AI Notice: Information extracted from policy documentation. This analysis is educational and does not constitute formal underwriting sanction, claim guarantee, or regulated financial advice.*";
+
     private final PolicyDocumentChunkRepository chunkRepository;
 
     public PolicyRagService(PolicyDocumentChunkRepository chunkRepository) {
@@ -25,7 +29,7 @@ public class PolicyRagService {
 
     @Transactional(readOnly = true)
     public PolicyRagQueryResponse answerPolicyQuestion(PolicyRagQueryRequest request) {
-        String query = request.getQuestion().trim();
+        String query = sanitizeInput(request.getQuestion() != null ? request.getQuestion().trim() : "");
         log.info("Processing grounded RAG query: {}", query);
 
         List<PolicyDocumentChunkEntity> candidates;
@@ -86,10 +90,11 @@ public class PolicyRagService {
             answerBuilder.append("Based on **").append(topCitation.getDocumentName()).append("**, specifically **")
                     .append(topCitation.getSectionTitle()).append("** (Page ").append(topCitation.getPageNumber()).append("):\n\n")
                     .append(generateGroundedSummary(query, topCitation.getExcerpt()))
-                    .append("\n\n*Verified against contractual terms on file.*");
+                    .append(RESPONSIBLE_AI_DISCLAIMER);
         } else {
             answerBuilder.append("No specific clause matching '").append(query)
-                    .append("' was located in the uploaded policy agreements. Please verify your document indexing or consult your benefits administrator.");
+                    .append("' was located in the uploaded policy agreements. Please verify your document indexing or consult your benefits administrator.")
+                    .append(RESPONSIBLE_AI_DISCLAIMER);
         }
 
         return new PolicyRagQueryResponse(
@@ -99,6 +104,13 @@ public class PolicyRagService {
                 !citations.isEmpty(),
                 matchedDoc
         );
+    }
+
+    private String sanitizeInput(String input) {
+        if (input == null) return "";
+        // Strip common prompt injection attempts and system prompt override directives
+        return input.replaceAll("(?i)(ignore\\s+all\\s+previous\\s+instructions|system\\s+prompt|disregard\\s+previous\\s+rules|you\\s+are\\s+now\\s+dan)", "")
+                .trim();
     }
 
     private double computeRelevanceScore(PolicyDocumentChunkEntity chunk, String[] keywords) {

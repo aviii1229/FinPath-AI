@@ -14,3 +14,4 @@ public interface NotificationPreferenceRepository extends JpaRepository<Notifica
 
     boolean existsByUserId(UUID userId);
 }
+

@@ -76,6 +76,16 @@ public class LendingService {
     }
 
     @Transactional(readOnly = true)
+    public LoanApplicationDto getApplicationById(UUID userId, UUID applicationId) {
+        LoanApplicationEntity app = loanApplicationRepository.findById(applicationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Loan application not found with id: " + applicationId));
+        if (userId != null && !app.getUser().getId().equals(userId)) {
+            throw new org.springframework.security.access.AccessDeniedException("Access denied: You cannot view loan applications belonging to another user");
+        }
+        return mapToApplicationDto(app);
+    }
+
+    @Transactional(readOnly = true)
     public PreQualifyResponse preQualify(UUID userId, PreQualifyRequest request) {
         UserProfileEntity profile = userProfileRepository.findByUserId(userId).orElse(null);
         CreditProfileEntity creditProfile = creditProfileRepository.findByUserId(userId).orElse(null);
@@ -513,6 +523,16 @@ public class LendingService {
         );
     }
 
+    @Transactional
+    public SimulateDecisionResponse simulateUnderwritingDecision(UUID userId, UUID applicationId) {
+        LoanApplicationEntity app = loanApplicationRepository.findById(applicationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Loan application not found with id: " + applicationId));
+        if (userId != null && !app.getUser().getId().equals(userId)) {
+            throw new org.springframework.security.access.AccessDeniedException("Access denied: You cannot trigger underwriting decisions for another user");
+        }
+        return simulateUnderwritingDecision(applicationId);
+    }
+
     @Transactional(readOnly = true)
     public List<RepaymentScheduleItemDto> getSchedule(UUID applicationId) {
         return repaymentScheduleRepository.findByApplicationIdOrderByInstallmentNumberAsc(applicationId).stream()
@@ -526,6 +546,16 @@ public class LendingService {
                         s.getStatus()
                 ))
                 .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<RepaymentScheduleItemDto> getSchedule(UUID userId, UUID applicationId) {
+        LoanApplicationEntity app = loanApplicationRepository.findById(applicationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Loan application not found with id: " + applicationId));
+        if (userId != null && !app.getUser().getId().equals(userId)) {
+            throw new org.springframework.security.access.AccessDeniedException("Access denied: You cannot view repayment schedules belonging to another user");
+        }
+        return getSchedule(applicationId);
     }
 
     public BigDecimal calculateEmi(BigDecimal principal, BigDecimal annualRate, int tenureMonths) {

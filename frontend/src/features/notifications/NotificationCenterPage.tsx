@@ -842,3 +842,4 @@ export const NotificationCenterPage: React.FC = () => {
     </div>
   );
 };
+

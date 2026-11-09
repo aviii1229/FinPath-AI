@@ -13,12 +13,18 @@ import java.util.regex.Pattern;
 @Service
 public class DocumentUnderstandingService {
 
+    public static final String UNTRUSTED_DOC_START = "<<<UNTRUSTED_FINANCIAL_DOCUMENT_START>>>";
+    public static final String UNTRUSTED_DOC_END = "<<<UNTRUSTED_FINANCIAL_DOCUMENT_END>>>";
+    public static final String RESPONSIBLE_AI_DISCLAIMER = "\n\n*Notice: AI analysis is for informational and organizational assistance only. Not an official financial or legal audit.*";
+
     public DocumentQueryResponse answerQuestion(UUID docId, String fileName, String category, String fullText, String question) {
         if (question == null || question.isBlank()) {
             return new DocumentQueryResponse(docId, fileName, "", "Please provide a valid question regarding this document.", List.of());
         }
 
-        String lowerQ = question.toLowerCase().trim();
+        // Delimit and sanitize untrusted inputs against prompt injection
+        String sanitizedQuestion = sanitizeQuestion(question);
+        String lowerQ = sanitizedQuestion.toLowerCase().trim();
         String text = (fullText != null) ? fullText : "";
         List<DocumentCitationDto> citations = new ArrayList<>();
         String answer;
@@ -34,10 +40,14 @@ public class DocumentUnderstandingService {
         } else if (lowerQ.contains("date") || lowerQ.contains("when") || lowerQ.contains("timeline") || lowerQ.contains("deadline") || lowerQ.contains("expiry")) {
             answer = generateDatesAnswer(category, text, citations);
         } else {
-            answer = generateContextualSearchAnswer(text, question, citations);
+            answer = generateContextualSearchAnswer(text, sanitizedQuestion, citations);
         }
 
-        return new DocumentQueryResponse(docId, fileName, question, answer, citations);
+        return new DocumentQueryResponse(docId, fileName, sanitizedQuestion, answer + RESPONSIBLE_AI_DISCLAIMER, citations);
+    }
+
+    private String sanitizeQuestion(String q) {
+        return q.replaceAll("(?i)(ignore\\s+all\\s+previous\\s+instructions|system\\s+prompt|disregard\\s+rules|you\\s+are\\s+now\\s+dan)", "").trim();
     }
 
     private String generateMeaningAnswer(String category, String fileName, String text, List<DocumentCitationDto> citations) {

@@ -84,3 +84,4 @@ public class NotificationSummaryDto {
         this.lastEvaluatedAt = lastEvaluatedAt;
     }
 }
+

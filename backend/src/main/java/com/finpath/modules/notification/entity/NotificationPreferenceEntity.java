@@ -255,3 +255,4 @@ public class NotificationPreferenceEntity {
         this.updatedAt = updatedAt;
     }
 }
+

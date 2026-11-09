@@ -75,6 +75,16 @@ public class AiChatService {
                 .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
+    public List<ChatMessageDto> getSessionMessages(UUID userId, UUID sessionId) {
+        AiChatSessionEntity session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Session not found: " + sessionId));
+        if (userId != null && !session.getUser().getId().equals(userId)) {
+            throw new org.springframework.security.access.AccessDeniedException("Access denied: You cannot view conversations of another user");
+        }
+        return getSessionMessages(sessionId);
+    }
+
     @Transactional
     public ChatQueryResponse processQuery(UUID userId, ChatQueryRequest request) {
         return orchestratorService.orchestrateJourney(userId, request);

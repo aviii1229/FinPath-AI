@@ -91,3 +91,4 @@ describe('FinPath AI 2.0 — Upgrade Phase 07: Proactive Financial Assistance & 
     fireEvent.click(saveBtn);
   });
 });
+

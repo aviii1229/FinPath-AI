@@ -5,6 +5,7 @@ import java.util.UUID;
 
 public class AuthResponse {
     private String accessToken;
+    private String refreshToken;
     private String tokenType = "Bearer";
     private long expiresInSeconds;
     private UUID userId;
@@ -16,7 +17,12 @@ public class AuthResponse {
     public AuthResponse() {}
 
     public AuthResponse(String accessToken, long expiresInSeconds, UUID userId, String email, String firstName, String lastName, List<String> roles) {
+        this(accessToken, null, expiresInSeconds, userId, email, firstName, lastName, roles);
+    }
+
+    public AuthResponse(String accessToken, String refreshToken, long expiresInSeconds, UUID userId, String email, String firstName, String lastName, List<String> roles) {
         this.accessToken = accessToken;
+        this.refreshToken = refreshToken;
         this.expiresInSeconds = expiresInSeconds;
         this.userId = userId;
         this.email = email;
@@ -39,6 +45,14 @@ public class AuthResponse {
 
     public void setToken(String token) {
         this.accessToken = token;
+    }
+
+    public String getRefreshToken() {
+        return refreshToken;
+    }
+
+    public void setRefreshToken(String refreshToken) {
+        this.refreshToken = refreshToken;
     }
 
     public String getTokenType() {
@@ -97,4 +111,3 @@ public class AuthResponse {
         this.roles = roles;
     }
 }
-

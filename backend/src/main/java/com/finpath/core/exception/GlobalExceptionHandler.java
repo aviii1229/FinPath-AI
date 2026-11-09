@@ -57,9 +57,19 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(problemDetail);
     }
 
+    @ExceptionHandler(org.springframework.security.authentication.LockedException.class)
+    public ResponseEntity<ProblemDetail> handleLockedException(org.springframework.security.authentication.LockedException ex) {
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.LOCKED, ex.getMessage());
+        problemDetail.setTitle("Account Locked");
+        problemDetail.setProperty("timestamp", Instant.now());
+        return ResponseEntity.status(HttpStatus.LOCKED).body(problemDetail);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ProblemDetail> handleGenericException(Exception ex) {
-        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, ex.getMessage());
+        // Suppress raw stack traces and internal db error messages from client responses
+        String safeMessage = "An unexpected error occurred while processing your request. Please try again or contact security support.";
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, safeMessage);
         problemDetail.setTitle("Internal Server Error");
         problemDetail.setType(URI.create("https://api.finpath.ai/errors/internal-server-error"));
         problemDetail.setProperty("timestamp", Instant.now());

@@ -202,3 +202,4 @@ public class NotificationPreferenceDto {
         this.updatedAt = updatedAt;
     }
 }
+

@@ -37,3 +37,4 @@ public class ChannelDeliveryResult {
         this.detail = detail;
     }
 }
+

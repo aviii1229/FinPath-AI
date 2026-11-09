@@ -2,20 +2,22 @@ package com.finpath.security.service;
 
 import com.finpath.core.exception.BadRequestException;
 import com.finpath.core.exception.ResourceNotFoundException;
-import com.finpath.security.dto.AuthResponse;
-import com.finpath.security.dto.LoginRequest;
-import com.finpath.security.dto.RegisterRequest;
-import com.finpath.security.dto.UserDto;
-import com.finpath.security.dto.UserProfileDto;
+import com.finpath.security.dto.*;
+import com.finpath.security.entity.RefreshTokenEntity;
 import com.finpath.security.entity.RoleEntity;
 import com.finpath.security.entity.UserEntity;
 import com.finpath.security.entity.UserProfileEntity;
 import com.finpath.security.jwt.JwtTokenProvider;
+import com.finpath.security.jwt.TokenRevocationService;
 import com.finpath.security.model.RoleName;
+import com.finpath.security.repository.RefreshTokenRepository;
 import com.finpath.security.repository.RoleRepository;
 import com.finpath.security.repository.UserProfileRepository;
 import com.finpath.security.repository.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -23,6 +25,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
@@ -31,29 +35,45 @@ import java.util.stream.Collectors;
 @Service
 public class AuthService {
 
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
+
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final UserProfileRepository userProfileRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtTokenProvider tokenProvider;
+    private final TokenRevocationService tokenRevocationService;
+    private final LoginRateLimiter rateLimiter;
+    private final AuditLogService auditLogService;
 
     public AuthService(UserRepository userRepository,
                        RoleRepository roleRepository,
                        UserProfileRepository userProfileRepository,
+                       RefreshTokenRepository refreshTokenRepository,
                        PasswordEncoder passwordEncoder,
                        AuthenticationManager authenticationManager,
-                       JwtTokenProvider tokenProvider) {
+                       JwtTokenProvider tokenProvider,
+                       TokenRevocationService tokenRevocationService,
+                       LoginRateLimiter rateLimiter,
+                       AuditLogService auditLogService) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.userProfileRepository = userProfileRepository;
+        this.refreshTokenRepository = refreshTokenRepository;
         this.passwordEncoder = passwordEncoder;
         this.authenticationManager = authenticationManager;
         this.tokenProvider = tokenProvider;
+        this.tokenRevocationService = tokenRevocationService;
+        this.rateLimiter = rateLimiter;
+        this.auditLogService = auditLogService;
     }
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
+        validatePasswordStrength(request.getPassword());
+
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new BadRequestException("Email is already registered: " + request.getEmail());
         }
@@ -81,9 +101,21 @@ public class AuthService {
                 .collect(Collectors.toList());
 
         String jwt = tokenProvider.generateToken(savedUser.getId(), savedUser.getEmail(), roles);
+        RefreshTokenEntity refreshToken = createRefreshToken(savedUser);
+
+        auditLogService.logSecurityEvent(
+                savedUser.getId(),
+                "USER_REGISTERED",
+                "AUTH",
+                savedUser.getId().toString(),
+                "127.0.0.1",
+                "Web Client",
+                "New user account registered successfully"
+        );
 
         return new AuthResponse(
                 jwt,
+                refreshToken.getToken(),
                 86400,
                 savedUser.getId(),
                 savedUser.getEmail(),
@@ -94,23 +126,151 @@ public class AuthService {
     }
 
     public AuthResponse login(LoginRequest request) {
-        Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
-        );
+        return login(request, "127.0.0.1", "Web Client");
+    }
 
-        SecurityContextHolder.getContext().setAuthentication(authentication);
+    public AuthResponse login(LoginRequest request, String ipAddress, String userAgent) {
+        // 1. IP Rate Limiting Check
+        if (rateLimiter.isIpBlocked(ipAddress)) {
+            throw new org.springframework.security.authentication.LockedException("Too many failed attempts from your IP address. Please wait 15 minutes before retrying.");
+        }
 
-        UserEntity user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + request.getEmail()));
+        // 2. Account Lockout Check
+        UserEntity user = userRepository.findByEmail(request.getEmail()).orElse(null);
+        if (user != null && user.isAccountLocked()) {
+            auditLogService.logSecurityEvent(
+                    user.getId(),
+                    "LOGIN_BLOCKED_ACCOUNT_LOCKED",
+                    "AUTH",
+                    user.getEmail(),
+                    ipAddress,
+                    userAgent,
+                    "Login attempt on locked account"
+            );
+            long minutesRemaining = ChronoUnit.MINUTES.between(Instant.now(), user.getLockedUntil()) + 1;
+            throw new org.springframework.security.authentication.LockedException(String.format("Account temporarily locked due to consecutive failed attempts. Try again in %d minutes.", Math.max(1, minutesRemaining)));
+        }
+
+        try {
+            Authentication authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
+            );
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+
+            if (user == null) {
+                user = userRepository.findByEmail(request.getEmail())
+                        .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + request.getEmail()));
+            }
+
+            // Reset failed login counter upon successful authentication
+            user.setFailedLoginAttempts(0);
+            user.setLockedUntil(null);
+            userRepository.save(user);
+            rateLimiter.resetAttempts(ipAddress);
+
+            List<String> roles = user.getRoles().stream()
+                    .map(RoleEntity::getId)
+                    .collect(Collectors.toList());
+
+            String jwt = tokenProvider.generateToken(user.getId(), user.getEmail(), roles);
+            RefreshTokenEntity refreshToken = createRefreshToken(user);
+
+            auditLogService.logSecurityEvent(
+                    user.getId(),
+                    "LOGIN_SUCCESS",
+                    "AUTH",
+                    user.getId().toString(),
+                    ipAddress,
+                    userAgent,
+                    "Successful authentication"
+            );
+
+            return new AuthResponse(
+                    jwt,
+                    refreshToken.getToken(),
+                    86400,
+                    user.getId(),
+                    user.getEmail(),
+                    user.getFirstName(),
+                    user.getLastName(),
+                    roles
+            );
+        } catch (BadCredentialsException ex) {
+            // Increment failed attempt counter and evaluate lockout
+            if (user != null) {
+                user.setFailedLoginAttempts(user.getFailedLoginAttempts() + 1);
+                if (user.getFailedLoginAttempts() >= 5) {
+                    user.setLockedUntil(Instant.now().plus(15, ChronoUnit.MINUTES));
+                    auditLogService.logSecurityEvent(
+                            user.getId(),
+                            "ACCOUNT_LOCKED",
+                            "AUTH",
+                            user.getEmail(),
+                            ipAddress,
+                            userAgent,
+                            "Account locked for 15 minutes after 5 consecutive failed attempts"
+                    );
+                    userRepository.save(user);
+                    rateLimiter.recordFailedAttempt(ipAddress);
+                    throw new org.springframework.security.authentication.LockedException("Account locked after 5 consecutive failed login attempts. Please retry in 15 minutes.");
+                }
+                userRepository.save(user);
+            }
+            rateLimiter.recordFailedAttempt(ipAddress);
+
+            auditLogService.logSecurityEvent(
+                    user != null ? user.getId() : null,
+                    "LOGIN_FAILED",
+                    "AUTH",
+                    request.getEmail(),
+                    ipAddress,
+                    userAgent,
+                    "Invalid password entered"
+            );
+
+            throw ex;
+        }
+    }
+
+    @Transactional
+    public AuthResponse refreshToken(RefreshTokenRequest request) {
+        RefreshTokenEntity entity = refreshTokenRepository.findByToken(request.getRefreshToken())
+                .orElseThrow(() -> new BadRequestException("Invalid or non-existent refresh token"));
+
+        if (entity.isRevoked() || entity.isExpired()) {
+            throw new BadRequestException("Refresh token is expired or revoked. Please log in again.");
+        }
+
+        UserEntity user = entity.getUser();
+        if ("DELETED".equalsIgnoreCase(user.getStatus())) {
+            throw new BadRequestException("Account is no longer active.");
+        }
+
+        // Rotate refresh token
+        entity.setRevoked(true);
+        refreshTokenRepository.save(entity);
+
+        RefreshTokenEntity newRefreshToken = createRefreshToken(user);
 
         List<String> roles = user.getRoles().stream()
                 .map(RoleEntity::getId)
                 .collect(Collectors.toList());
 
-        String jwt = tokenProvider.generateToken(user.getId(), user.getEmail(), roles);
+        String newJwt = tokenProvider.generateToken(user.getId(), user.getEmail(), roles);
+
+        auditLogService.logSecurityEvent(
+                user.getId(),
+                "TOKEN_REFRESH",
+                "AUTH",
+                user.getId().toString(),
+                "127.0.0.1",
+                "Web Client",
+                "Rotated refresh token and generated new access token"
+        );
 
         return new AuthResponse(
-                jwt,
+                newJwt,
+                newRefreshToken.getToken(),
                 86400,
                 user.getId(),
                 user.getEmail(),
@@ -118,6 +278,48 @@ public class AuthService {
                 user.getLastName(),
                 roles
         );
+    }
+
+    @Transactional
+    public void logout(String bearerToken, UUID userId) {
+        if (bearerToken != null && bearerToken.startsWith("Bearer ")) {
+            bearerToken = bearerToken.substring(7);
+        }
+        if (bearerToken != null && !bearerToken.isBlank()) {
+            tokenRevocationService.revokeToken(bearerToken, Instant.now().plusSeconds(86400));
+        }
+        if (userId != null) {
+            refreshTokenRepository.revokeAllForUser(userId);
+            auditLogService.logSecurityEvent(
+                    userId,
+                    "LOGOUT",
+                    "AUTH",
+                    userId.toString(),
+                    "127.0.0.1",
+                    "Web Client",
+                    "Session invalidated and tokens revoked"
+            );
+        }
+    }
+
+    private RefreshTokenEntity createRefreshToken(UserEntity user) {
+        String tokenString = UUID.randomUUID().toString() + "-" + UUID.randomUUID().toString();
+        Instant expiry = Instant.now().plus(7, ChronoUnit.DAYS);
+        RefreshTokenEntity refreshToken = new RefreshTokenEntity(user, tokenString, expiry);
+        return refreshTokenRepository.save(refreshToken);
+    }
+
+    private void validatePasswordStrength(String password) {
+        if (password == null || password.length() < 8) {
+            throw new BadRequestException("Password must be at least 8 characters long.");
+        }
+        boolean hasUpper = password.chars().anyMatch(Character::isUpperCase);
+        boolean hasLower = password.chars().anyMatch(Character::isLowerCase);
+        boolean hasDigit = password.chars().anyMatch(Character::isDigit);
+
+        if (!hasUpper || !hasLower || !hasDigit) {
+            throw new BadRequestException("Password must contain at least one uppercase letter, one lowercase letter, and one number.");
+        }
     }
 
     @Transactional(readOnly = true)
@@ -213,4 +415,3 @@ public class AuthService {
         return pDto;
     }
 }
-

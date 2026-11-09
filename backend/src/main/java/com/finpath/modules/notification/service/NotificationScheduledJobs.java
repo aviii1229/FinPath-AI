@@ -46,3 +46,4 @@ public class NotificationScheduledJobs {
         log.info("Daily proactive financial assistance scan completed for {} users.", totalEvaluated);
     }
 }
+

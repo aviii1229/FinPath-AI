@@ -63,3 +63,4 @@ INSERT INTO user_notification_preferences (
     FALSE, '22:00', '08:00',
     TRUE, FALSE, 'Asia/Kolkata'
 ) ON CONFLICT (user_id) DO NOTHING;
+

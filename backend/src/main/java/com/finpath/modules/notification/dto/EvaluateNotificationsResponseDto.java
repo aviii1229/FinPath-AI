@@ -62,3 +62,4 @@ public class EvaluateNotificationsResponseDto {
         this.evaluationTimestamp = evaluationTimestamp;
     }
 }
+

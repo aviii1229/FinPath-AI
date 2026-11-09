@@ -47,8 +47,9 @@ public class LendingController {
     @GetMapping("/applications/{id}")
     @Operation(summary = "Get detailed loan application by ID")
     public ResponseEntity<ApiResponse<LoanApplicationDto>> getApplicationById(
-            @PathVariable UUID id) {
-        LoanApplicationDto app = lendingService.getApplicationById(id);
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserPrincipal user) {
+        LoanApplicationDto app = lendingService.getApplicationById(user.getId(), id);
         return ResponseEntity.ok(ApiResponse.success(app));
     }
 
@@ -106,8 +107,9 @@ public class LendingController {
     @PostMapping("/applications/{id}/simulate-decision")
     @Operation(summary = "Trigger simulated underwriting decision engine")
     public ResponseEntity<ApiResponse<SimulateDecisionResponse>> simulateUnderwritingDecision(
-            @PathVariable UUID id) {
-        SimulateDecisionResponse response = lendingService.simulateUnderwritingDecision(id);
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserPrincipal user) {
+        SimulateDecisionResponse response = lendingService.simulateUnderwritingDecision(user.getId(), id);
         return ResponseEntity.ok(ApiResponse.success("Simulated underwriting decision complete", response));
     }
 
@@ -130,8 +132,9 @@ public class LendingController {
     @GetMapping("/applications/{id}/repayment-schedule")
     @Operation(summary = "Get month-by-month repayment amortization schedule")
     public ResponseEntity<ApiResponse<List<RepaymentScheduleItemDto>>> getRepaymentSchedule(
-            @PathVariable UUID id) {
-        List<RepaymentScheduleItemDto> schedule = lendingService.getSchedule(id);
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserPrincipal user) {
+        List<RepaymentScheduleItemDto> schedule = lendingService.getSchedule(user.getId(), id);
         return ResponseEntity.ok(ApiResponse.success(schedule));
     }
 }
