@@ -300,3 +300,4 @@ export const SmartExpensesView: React.FC<SmartExpensesViewProps> = ({
     </div>
   );
 };
+

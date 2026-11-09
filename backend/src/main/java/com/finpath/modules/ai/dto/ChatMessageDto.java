@@ -36,6 +36,10 @@ public class ChatMessageDto {
             return tool;
         }
 
+        public String getToolName() {
+            return tool;
+        }
+
         public void setTool(String tool) {
             this.tool = tool;
         }

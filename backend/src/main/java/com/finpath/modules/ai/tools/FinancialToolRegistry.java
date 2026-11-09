@@ -6,6 +6,10 @@ import com.finpath.modules.fintech.dto.BudgetDto;
 import com.finpath.modules.fintech.dto.CashflowForecastDto;
 import com.finpath.modules.fintech.dto.FinancialInsightsResponse;
 import com.finpath.modules.fintech.dto.TransactionDto;
+import com.finpath.modules.fintech.dto.FinancialHealthScoreDto;
+import com.finpath.modules.fintech.dto.SmartExpenseAnalysisDto;
+import com.finpath.modules.fintech.dto.WhatIfSimulationRequestDto;
+import com.finpath.modules.fintech.dto.WhatIfSimulationResponseDto;
 import com.finpath.modules.fintech.service.FintechService;
 import com.finpath.modules.insurance.dto.*;
 import com.finpath.modules.insurance.service.InsuranceService;
@@ -323,6 +327,54 @@ public class FinancialToolRegistry {
         } catch (Exception ex) {
             log.error("Tool execution failed: calculateSavings", ex);
             return new ToolExecutionResult<>("calculateSavings", false, null, "Cashflow calculation failed: " + ex.getMessage(), System.currentTimeMillis() - start);
+        }
+    }
+
+    public ToolExecutionResult<FinancialHealthScoreDto> getFinancialHealthScore(UUID userId) {
+        long start = System.currentTimeMillis();
+        validateUser(userId);
+        try {
+            FinancialHealthScoreDto score = fintechService.calculateFinancialHealthScore(userId);
+            long duration = System.currentTimeMillis() - start;
+            String summary = String.format("Computed Financial Health Score: %d/100 (%s) across 5 deterministic factors.",
+                    score.getOverallScore(), score.getHealthTier());
+            return new ToolExecutionResult<>("getFinancialHealthScore", true, score, summary, duration);
+        } catch (Exception ex) {
+            log.error("Tool execution failed: getFinancialHealthScore", ex);
+            return new ToolExecutionResult<>("getFinancialHealthScore", false, null, "Health score evaluation failed: " + ex.getMessage(), System.currentTimeMillis() - start);
+        }
+    }
+
+    public ToolExecutionResult<SmartExpenseAnalysisDto> getSmartExpenses(UUID userId) {
+        long start = System.currentTimeMillis();
+        validateUser(userId);
+        try {
+            SmartExpenseAnalysisDto analysis = fintechService.analyzeSmartExpenses(userId);
+            long duration = System.currentTimeMillis() - start;
+            int subs = analysis.getSubscriptions() != null ? analysis.getSubscriptions().size() : 0;
+            int dups = analysis.getDuplicateSuspects() != null ? analysis.getDuplicateSuspects().size() : 0;
+            String summary = String.format("Smart Expense Audit: identified %d recurring subscriptions and %d duplicate suspects requiring review.", subs, dups);
+            return new ToolExecutionResult<>("getSmartExpenses", true, analysis, summary, duration);
+        } catch (Exception ex) {
+            log.error("Tool execution failed: getSmartExpenses", ex);
+            return new ToolExecutionResult<>("getSmartExpenses", false, null, "Smart expense analysis failed: " + ex.getMessage(), System.currentTimeMillis() - start);
+        }
+    }
+
+    public ToolExecutionResult<WhatIfSimulationResponseDto> simulateWhatIf(UUID userId, WhatIfSimulationRequestDto request) {
+        long start = System.currentTimeMillis();
+        validateUser(userId);
+        try {
+            WhatIfSimulationResponseDto sim = fintechService.simulateWhatIf(userId, request);
+            long duration = System.currentTimeMillis() - start;
+            String summary = String.format("What-If Simulation modeled: Net surplus %s (₹%s), Feasibility: %s.",
+                    sim.getNetMonthlyCashflowDelta().compareTo(BigDecimal.ZERO) >= 0 ? "gain" : "impact",
+                    sim.getNetMonthlyCashflowDelta().abs().toPlainString(),
+                    sim.getFeasibilityVerdict());
+            return new ToolExecutionResult<>("simulateWhatIf", true, sim, summary, duration);
+        } catch (Exception ex) {
+            log.error("Tool execution failed: simulateWhatIf", ex);
+            return new ToolExecutionResult<>("simulateWhatIf", false, null, "What-If simulation failed: " + ex.getMessage(), System.currentTimeMillis() - start);
         }
     }
 

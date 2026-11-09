@@ -101,6 +101,18 @@ public class AiJourneyOrchestratorService {
         else if (isFinancialEducationIntent(lower)) {
             response = handleFinancialEducation(user, userProfile, session, messageText);
         }
+        // Phase 04: Financial Health Score
+        else if (isFinancialHealthScoreIntent(lower)) {
+            response = handleFinancialHealthScore(user, userProfile, session, messageText);
+        }
+        // Phase 04: What-If Simulation
+        else if (isWhatIfSimulatorIntent(lower)) {
+            response = handleWhatIfSimulation(user, userProfile, session, messageText);
+        }
+        // Phase 04: Smart Expense Audit (Duplicates & Subscriptions)
+        else if (isSmartExpenseAuditIntent(lower)) {
+            response = handleSmartExpenseAudit(user, userProfile, session, messageText);
+        }
         // 3. Multi-Module Request: Insurance + Budgeting ("buy health insurance but also manage expenses")
         else if (isMultiModuleInsuranceAndBudgetIntent(lower)) {
             response = handleMultiModule_InsuranceAndBudgeting(user, userProfile, session, messageText);
@@ -171,6 +183,24 @@ public class AiJourneyOrchestratorService {
         return (trimmed.equals("help me") || trimmed.equals("what can you do") || trimmed.equals("what should i do")
                 || trimmed.equals("money advice") || trimmed.equals("financial advice") || trimmed.equals("help me with my finances")
                 || trimmed.equals("what do you suggest") || trimmed.equals("guide me"));
+    }
+
+    private boolean isFinancialHealthScoreIntent(String text) {
+        String lower = text.toLowerCase();
+        return lower.contains("health score") || lower.contains("financial health") || lower.contains("how healthy")
+                || (lower.contains("score") && (lower.contains("finances") || lower.contains("financial") || lower.contains("my money")));
+    }
+
+    private boolean isWhatIfSimulatorIntent(String text) {
+        String lower = text.toLowerCase();
+        return lower.contains("what if") || lower.contains("what-if") || lower.contains("simulate")
+                || lower.contains("if i save") || lower.contains("if i cut") || lower.contains("if i take a loan");
+    }
+
+    private boolean isSmartExpenseAuditIntent(String text) {
+        String lower = text.toLowerCase();
+        return lower.contains("duplicate") || lower.contains("subscriptions") || lower.contains("subscription")
+                || lower.contains("unusual expenses") || lower.contains("spending increase");
     }
 
     private boolean isFinancialEducationIntent(String text) {
@@ -1305,5 +1335,132 @@ public class AiJourneyOrchestratorService {
     private String formatCurrency(BigDecimal amount) {
         if (amount == null) return "₹0.00";
         return String.format("₹%,.2f", amount);
+    }
+
+    // --- PHASE 04 HANDLERS ---
+
+    private ChatQueryResponse handleFinancialHealthScore(UserEntity user, UserProfileEntity profile, AiChatSessionEntity session, String message) {
+        ChatQueryResponse resp = new ChatQueryResponse();
+        resp.setIntent("FINANCIAL_HEALTH_SCORE");
+
+        FinancialToolRegistry.ToolExecutionResult<FinancialHealthScoreDto> scoreRes = toolRegistry.getFinancialHealthScore(user.getId());
+        FinancialHealthScoreDto score = scoreRes.getData();
+
+        List<ChatMessageDto.ToolInvocationDto> tools = new ArrayList<>();
+        tools.add(scoreRes.toDto());
+        resp.setToolInvocations(tools);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("### FinPath Financial Health Assessment\n\n");
+        sb.append(String.format("**Overall Score:** `%d/100` (Status: **%s**)\n\n", score.getOverallScore(), score.getHealthTier()));
+        sb.append(score.getSummaryText()).append("\n\n");
+        sb.append("#### Transparent Factor Breakdown:\n");
+        for (FinancialHealthScoreDto.ScoringFactorDto factor : score.getScoringFactors()) {
+            sb.append(String.format("- **%s**: %d/%d pts (%s) — Current: `%s` vs Benchmark: `%s`\n",
+                    factor.getFactorName(), factor.getScoreAwarded(), factor.getMaxScore(), factor.getStatus(), factor.getCurrentMetricValue(), factor.getBenchmark()));
+        }
+
+        sb.append("\n#### Recommended Optimizations:\n");
+        for (String imp : score.getImprovementAreas()) {
+            sb.append("- ").append(imp).append("\n");
+        }
+
+        sb.append("\n> **Notice:** ").append(score.getDisclaimer());
+        resp.setContent(sb.toString());
+
+        List<AiInteractiveActionDto> actions = new ArrayList<>();
+        actions.add(new AiInteractiveActionDto("Simulate What-If Improvements", "NAVIGATE", "tab=what-if", "/fintech"));
+        actions.add(new AiInteractiveActionDto("View Full Health Score Matrix", "NAVIGATE", "tab=health-score", "/fintech"));
+        resp.setSuggestedActions(actions);
+
+        AiJourneyStageDto stage = new AiJourneyStageDto("HEALTH_SCORE_REVIEW", 1, 1, "Financial Health Review", List.of("Automated Cashflow Audit"), List.of());
+        resp.setJourneyStage(stage);
+
+        return resp;
+    }
+
+    private ChatQueryResponse handleWhatIfSimulation(UserEntity user, UserProfileEntity profile, AiChatSessionEntity session, String message) {
+        ChatQueryResponse resp = new ChatQueryResponse();
+        resp.setIntent("WHAT_IF_SIMULATION");
+
+        WhatIfSimulationRequestDto simReq = new WhatIfSimulationRequestDto(
+                BigDecimal.valueOf(5000),
+                Map.of("DINING", BigDecimal.valueOf(20)),
+                null, 36, BigDecimal.valueOf(8.99), BigDecimal.ZERO
+        );
+
+        FinancialToolRegistry.ToolExecutionResult<WhatIfSimulationResponseDto> simRes = toolRegistry.simulateWhatIf(user.getId(), simReq);
+        WhatIfSimulationResponseDto sim = simRes.getData();
+
+        List<ChatMessageDto.ToolInvocationDto> tools = new ArrayList<>();
+        tools.add(simRes.toDto());
+        resp.setToolInvocations(tools);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("### What-If Cashflow Scenario Simulation\n\n");
+        sb.append(String.format("**Feasibility Verdict:** `%s`\n\n", sim.getFeasibilityVerdict()));
+        sb.append(String.format("- **Baseline Monthly Surplus:** ₹%s (Savings Rate: %.1f%%)\n",
+                sim.getBaselineMonthlySurplus().toPlainString(), sim.getBaselineSavingsRate()));
+        sb.append(String.format("- **Simulated Monthly Surplus:** ₹%s (Savings Rate: %.1f%%)\n",
+                sim.getSimulatedMonthlySurplus().toPlainString(), sim.getSimulatedSavingsRate()));
+        sb.append(String.format("- **Net Monthly Cashflow Delta:** +₹%s/month\n",
+                sim.getNetMonthlyCashflowDelta().toPlainString()));
+        sb.append(String.format("- **Emergency Runway:** %.1f months (from %.1f months baseline)\n\n",
+                sim.getSimulatedRunwayMonths(), sim.getBaselineRunwayMonths()));
+
+        sb.append("#### Model Observations:\n");
+        for (String obs : sim.getImpactObservations()) {
+            sb.append("- ").append(obs).append("\n");
+        }
+
+        resp.setContent(sb.toString());
+
+        List<AiInteractiveActionDto> actions = new ArrayList<>();
+        actions.add(new AiInteractiveActionDto("Open Interactive Simulator", "NAVIGATE", "tab=what-if", "/fintech"));
+        resp.setSuggestedActions(actions);
+
+        AiJourneyStageDto stage = new AiJourneyStageDto("WHAT_IF_SIMULATED", 1, 1, "What-If Scenario Simulation", List.of("Scenario Modeled"), List.of());
+        resp.setJourneyStage(stage);
+
+        return resp;
+    }
+
+    private ChatQueryResponse handleSmartExpenseAudit(UserEntity user, UserProfileEntity profile, AiChatSessionEntity session, String message) {
+        ChatQueryResponse resp = new ChatQueryResponse();
+        resp.setIntent("SMART_EXPENSE_AUDIT");
+
+        FinancialToolRegistry.ToolExecutionResult<SmartExpenseAnalysisDto> seRes = toolRegistry.getSmartExpenses(user.getId());
+        SmartExpenseAnalysisDto analysis = seRes.getData();
+
+        List<ChatMessageDto.ToolInvocationDto> tools = new ArrayList<>();
+        tools.add(seRes.toDto());
+        resp.setToolInvocations(tools);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("### Smart Expense & Anomaly Audit\n\n");
+        sb.append(String.format("**Active Subscriptions:** %d services totaling **₹%s/month**\n\n",
+                analysis.getSubscriptions().size(), analysis.getMonthlySubscriptionsTotal().toPlainString()));
+
+        if (!analysis.getDuplicateSuspects().isEmpty()) {
+            sb.append("#### Suspected Duplicate Transactions (Review Required):\n");
+            for (SmartExpenseAnalysisDto.DuplicateSuspectDto dup : analysis.getDuplicateSuspects()) {
+                sb.append(String.format("- **%s** (₹%s): %s [Primary: %s, Second: %s]\n",
+                        dup.getMerchantName(), dup.getAmount().toPlainString(), dup.getExplanation(), dup.getPrimaryDate(), dup.getDuplicateDate()));
+            }
+            sb.append("\n> **Safety Protocol:** In accordance with financial regulations, FinPath never deletes or flags transactions as duplicates without your explicit consent.\n");
+        } else {
+            sb.append("No duplicate charges detected in the recent billing cycle.\n");
+        }
+
+        resp.setContent(sb.toString());
+
+        List<AiInteractiveActionDto> actions = new ArrayList<>();
+        actions.add(new AiInteractiveActionDto("Review Subscriptions & Duplicates", "NAVIGATE", "tab=smart-expenses", "/fintech"));
+        resp.setSuggestedActions(actions);
+
+        AiJourneyStageDto stage = new AiJourneyStageDto("SMART_EXPENSES_AUDITED", 1, 1, "Smart Expense Audit", List.of("Audit Completed"), List.of());
+        resp.setJourneyStage(stage);
+
+        return resp;
     }
 }

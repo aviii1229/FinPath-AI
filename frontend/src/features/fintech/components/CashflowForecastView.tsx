@@ -300,3 +300,4 @@ export const CashflowForecastView: React.FC<CashflowForecastViewProps> = ({
     </div>
   );
 };
+

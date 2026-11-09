@@ -278,4 +278,56 @@ public class AiChatIntegrationTest {
                 .andExpect(jsonPath("$.data[1].content", containsString("XXXX-XXXX-9012")))
                 .andExpect(jsonPath("$.data[1].content", containsString("ABCDEXXXXF")));
     }
+
+    @Test
+    void testPhase4_OrchestrateFinancialHealthScore() throws Exception {
+        ChatQueryRequest request = new ChatQueryRequest(
+                "What is my financial health score and how can I improve it?"
+        );
+
+        mockMvc.perform(post("/api/v1/ai/chat/query")
+                        .header("Authorization", "Bearer " + authToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success", is(true)))
+                .andExpect(jsonPath("$.data.intent", is("FINANCIAL_HEALTH_SCORE")))
+                .andExpect(jsonPath("$.data.content", containsString("Financial Health Assessment")))
+                .andExpect(jsonPath("$.data.content", containsString("Notice:")))
+                .andExpect(jsonPath("$.data.toolInvocations[0].tool", is("getFinancialHealthScore")));
+    }
+
+    @Test
+    void testPhase4_OrchestrateWhatIfSimulation() throws Exception {
+        ChatQueryRequest request = new ChatQueryRequest(
+                "What if I save ₹5,000 extra per month and cut dining out?"
+        );
+
+        mockMvc.perform(post("/api/v1/ai/chat/query")
+                        .header("Authorization", "Bearer " + authToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success", is(true)))
+                .andExpect(jsonPath("$.data.intent", is("WHAT_IF_SIMULATION")))
+                .andExpect(jsonPath("$.data.content", containsString("What-If Cashflow Scenario Simulation")))
+                .andExpect(jsonPath("$.data.toolInvocations[0].tool", is("simulateWhatIf")));
+    }
+
+    @Test
+    void testPhase4_OrchestrateSmartExpenseAudit() throws Exception {
+        ChatQueryRequest request = new ChatQueryRequest(
+                "Review my subscriptions and any duplicate transactions"
+        );
+
+        mockMvc.perform(post("/api/v1/ai/chat/query")
+                        .header("Authorization", "Bearer " + authToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success", is(true)))
+                .andExpect(jsonPath("$.data.intent", is("SMART_EXPENSE_AUDIT")))
+                .andExpect(jsonPath("$.data.content", containsString("Smart Expense & Anomaly Audit")))
+                .andExpect(jsonPath("$.data.toolInvocations[0].tool", is("getSmartExpenses")));
+    }
 }

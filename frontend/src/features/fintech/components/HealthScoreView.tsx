@@ -214,3 +214,4 @@ export const HealthScoreView: React.FC<HealthScoreViewProps> = ({
     </div>
   );
 };
+
